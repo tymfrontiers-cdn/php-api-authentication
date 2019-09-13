@@ -1,0 +1,33 @@
+{
+  "name": "tymfrontiers-cdn/php-api-authentication",
+  "description": "PHP: Simple API Authentication",
+  "keywords": ["php", "api","auth","authentication"],
+  "homepage": "https://github.com/tymfrontiers-cdn/php-api-authentication",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+      {
+          "name": "Sir Louis",
+          "email": "me@sirlouis.io",
+          "homepage": "https://sirlouis.io",
+          "role": "developer"
+      },
+      {
+          "name": "Tym Frontiers Ltd",
+          "email": "git@tymfrontiers.com",
+          "homepage": "https://tymfrontiers.com",
+          "role": "developer"
+      }
+  ],
+  "require": {
+    "php" : ">=5.3",
+    "tymfrontiers-cdn/php-api-devapp" : ">=0.1@stable"
+
+  },
+  "require-dev": {},
+  "autoload": {
+      "psr-4": {
+          "TymFrontiers\\API\\": "src/"
+      }
+  }
+}
