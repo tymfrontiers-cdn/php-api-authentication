@@ -9,13 +9,13 @@ class Authentication{
   private $_signature_method;
   public $errors = [];
 
-  function __construct(array $api_sign_patterns = [], string $custom_header_set=''){
+  function __construct(array $api_sign_patterns = [], string $custom_header_set='', int $overtime_seconds=0){
     $this->_sign_pattern = $api_sign_patterns;
     $custom_header_sets = [
       'get' => $_GET,
       'post' => $_POST
     ];
-    $header = (!empty($custom_header_set) && \in_array(\strtolower($custom_header_set),$custom_header_sets))
+    $header = (!empty($custom_header_set) && \array_key_exists(\strtolower($custom_header_set),$custom_header_sets))
       ? $custom_header_sets[$custom_header_set]
       : \apache_request_headers();
     if(
@@ -33,6 +33,9 @@ class Authentication{
         $sign = \base64_decode($header['Auth-Signature']);
         $hash = \hash($header['Signature-Method'],$hash_string);
         $request_expiry = \strtotime($app->api_max_request_tym, (int)$header['Tymstamp']);
+        if ($overtime_seconds > 0) {
+          $request_expiry += $overtime_seconds;
+        }
         if( $sign == $hash){
           if( $request_expiry >= \time() ){
             $this->_app = $app;
