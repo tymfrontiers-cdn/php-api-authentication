@@ -1,5 +1,6 @@
 <?php
 namespace TymFrontiers\API;
+use \TymFrontiers\MultiForm;
 
 class Authentication{
 
@@ -32,7 +33,7 @@ class Authentication{
         $hash_string = "{$app->prefix}&{$app->name}&{$app->privateKey()}&{$header['Signature-Method']}&{$header['Tymstamp']}";
         $sign = \base64_decode($header['Auth-Signature']);
         $hash = \hash($header['Signature-Method'],$hash_string);
-        $request_expiry = \strtotime($app->api_max_request_tym, (int)$header['Tymstamp']);
+        $request_expiry = \strtotime($app->request_timeout_opt[$app->request_timeout], (int)$header['Tymstamp']);
         if ($overtime_seconds > 0) {
           $request_expiry += $overtime_seconds;
         }
@@ -40,6 +41,24 @@ class Authentication{
           if( $request_expiry >= \time() ){
             $this->_app = $app;
             $this->_signature_method = $header['Signature-Method'];
+            // save log
+            try {
+              $GLOBALS["database"]->closeConnection();
+              $GLOBALS["database"] = new \TymFrontiers\MySQLDatabase(MYSQL_SERVER, MYSQL_DEVELOPER_USERNAME, MYSQL_DEVELOPER_PASS);
+              $log = new MultiForm(MYSQL_DEV_DB, 'request_history', 'id');
+              $log->app = $this->appName();
+              $log->path = "{$_SERVER['REQUEST_URI']} | {$_SERVER["HTTP_HOST"]}";
+              $re_param = \json_decode( \file_get_contents('php://input'), true);
+              if (!empty($re_param)) {
+                $log->param = \json_encode($re_param);
+              }
+              $log->create();
+              $GLOBALS["database"]->closeConnection();
+              $GLOBALS["database"] = new \TymFrontiers\MySQLDatabase(MYSQL_SERVER, MYSQL_GUEST_USERNAME, MYSQL_GUEST_PASS);
+            } catch (\Exception $e) {
+
+            }
+
           }else{
             $this->errors['self'][] = [0,256,"Request Authentication credential expired",__FILE__,__LINE__];
           }
