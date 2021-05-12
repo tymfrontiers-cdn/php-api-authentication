@@ -20,7 +20,6 @@
       }
   ],
   "require": {
-    "php" : ">=5.3",
     "tymfrontiers-cdn/php-api-devapp" : ">=0.1@stable"
 
   },
