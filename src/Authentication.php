@@ -10,7 +10,7 @@ class Authentication{
   private $_signature_method;
   public $errors = [];
 
-  function __construct(array $api_sign_patterns = [], string $custom_header_set='', int $overtime_seconds=0){
+  function __construct(array $api_sign_patterns = [], string $custom_header_set='', int $overtime_seconds=0, bool $skip_app_log = false){
     $this->_sign_pattern = $api_sign_patterns;
     $custom_header_sets = [
       'get' => $_GET,
@@ -42,21 +42,26 @@ class Authentication{
             $this->_app = $app;
             $this->_signature_method = $header['Signature-Method'];
             // save log
-            try {
-              $GLOBALS["database"]->closeConnection();
-              $GLOBALS["database"] = new \TymFrontiers\MySQLDatabase(MYSQL_SERVER, MYSQL_DEVELOPER_USERNAME, MYSQL_DEVELOPER_PASS);
-              $log = new MultiForm(MYSQL_DEV_DB, 'request_history', 'id');
-              $log->app = $this->appName();
-              $log->path = "{$_SERVER['REQUEST_URI']} | {$_SERVER["HTTP_HOST"]}";
-              $re_param = \json_decode( \file_get_contents('php://input'), true);
-              if (!empty($re_param)) {
-                $log->param = \json_encode($re_param);
-              }
-              $log->create();
-              $GLOBALS["database"]->closeConnection();
-              $GLOBALS["database"] = new \TymFrontiers\MySQLDatabase(MYSQL_SERVER, MYSQL_GUEST_USERNAME, MYSQL_GUEST_PASS);
-            } catch (\Exception $e) {
+            $is_native_app = \defined("IS_NATIVE_APP") ? IS_NATIVE_APP : "";
+            if ($is_native_app !== $this->appName() || !$skip_app_log) {
+              try {
+                $GLOBALS["database"]->closeConnection();
+                $GLOBALS["database"] = new \TymFrontiers\MySQLDatabase(MYSQL_SERVER, MYSQL_DEVELOPER_USERNAME, MYSQL_DEVELOPER_PASS);
+                $log = new MultiForm(MYSQL_DEV_DB, 'request_history', 'id');
+                $log->app = $this->appName();
+                $log->path = "{$_SERVER['REQUEST_URI']} | {$_SERVER["HTTP_HOST"]}";
+                $post = \json_decode(\file_get_contents('php://input'), true);
+                $post = $post ? $post : (!empty($_POST) ? ($_POST) : $_GET);
+                $re_param = $post;
+                if (!empty($re_param)) {
+                  $log->param = \json_encode($re_param);
+                }
+                $log->create();
+                $GLOBALS["database"]->closeConnection();
+                $GLOBALS["database"] = new \TymFrontiers\MySQLDatabase(MYSQL_SERVER, MYSQL_GUEST_USERNAME, MYSQL_GUEST_PASS);
+              } catch (\Exception $e) {
 
+              }
             }
 
           }else{
