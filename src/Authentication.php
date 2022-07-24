@@ -1,16 +1,23 @@
 <?php
 namespace TymFrontiers\API;
-use \TymFrontiers\MultiForm;
+use \TymFrontiers\MultiForm,
+    \TymFrontiers\MySQLDatabase;
 
 class Authentication{
 
   private $_sign_pattern = [];
   private $_app=false;
+  private $_conn = false;
   private $_access=[];
   private $_signature_method;
   public $errors = [];
 
-  function __construct(array $api_sign_patterns = [], string $custom_header_set='', int $overtime_seconds=0, bool $skip_app_log = false){
+  function __construct(array $api_sign_patterns = [], string $custom_header_set='', int $overtime_seconds=0, bool $skip_app_log = false, $conn = false){
+    global $database;
+    if ((!$conn || !$conn instanceof MySQLDatabase) && !$database instanceof MySQLDatabase) {
+      throw new \Exception("No database connection set", 1);
+    }
+    $this->_conn = $conn ? $conn : $database;
     $this->_sign_pattern = $api_sign_patterns;
     $custom_header_sets = [
       'get' => $_GET,
@@ -19,22 +26,35 @@ class Authentication{
     $header = (!empty($custom_header_set) && \array_key_exists(\strtolower($custom_header_set),$custom_header_sets))
       ? $custom_header_sets[$custom_header_set]
       : \apache_request_headers();
-    if(
-      \array_key_exists('Auth-App',$header) &&
-      \array_key_exists('Auth-Key',$header) &&
-      \array_key_exists('Signature-Method',$header) &&
-      \array_key_exists('Tymstamp',$header) &&
-      \array_key_exists('Auth-Signature',$header) &&
-      \in_array( \strtolower($header['Signature-Method']),['sha256','sha512'])
-    ){
+    $missn = [];
+    foreach ([
+      'Auth-App',
+      'Auth-Key',
+      'Signature-Method',
+      'Tymstamp',
+      'Auth-Signature'
+    ] as $prop) {
+      if (!\array_key_exists($prop, $header)) {
+        $missn[] = $prop;
+      }
+    }
+    if( empty($missn) && \in_array(\strtolower($header["Signature-Method"]), ['sha256','sha512'])) {
       $header['Signature-Method'] = \strtolower($header['Signature-Method']);
-      $app = new DevApp($header['Auth-App'],$header['Auth-Key'],true);
+      $db_name = \function_exists("\Catali\get_constant")
+        ? \Catali\get_constant("MYSQL_DEV_DB")
+        : (\defined("MYSQL_DEV_DB") ? MYSQL_DEV_DB : "");
+      if (empty($db_name)) throw new \Exception("Dev database: 'MYSQL_DEV_DB' not defined", 1);
+      
+      $dev_mode = \defined("API_ENV_DEVMODE") ? (bool)API_ENV_DEVMODE : false;
+      $app = new DevApp($this->_conn, $db_name);
+      $app->load($header['Auth-App'], $header['Auth-Key'], !(bool)$dev_mode);
       if( !empty($app->name) ){
         $hash_string = "{$app->prefix}&{$app->name}&{$app->privateKey()}&{$header['Signature-Method']}&{$header['Tymstamp']}";
         $sign = \base64_decode($header['Auth-Signature']);
         $hash = \hash($header['Signature-Method'],$hash_string);
-        $request_expiry = \strtotime($app->request_timeout_opt[$app->request_timeout], (int)$header['Tymstamp']);
-        if ($overtime_seconds > 0) {
+        // $set_expiry = \strtotime("+" . \ini_get("max_execution_time") . " Seconds");
+        $request_expiry = \strtotime("+" . \ini_get("max_execution_time") . " Seconds", (int)$header['Tymstamp']);
+        if ($overtime_seconds > 0 && $dev_mode) {
           $request_expiry += $overtime_seconds;
         }
         if( $sign == $hash){
@@ -42,12 +62,9 @@ class Authentication{
             $this->_app = $app;
             $this->_signature_method = $header['Signature-Method'];
             // save log
-            $is_native_app = \defined("IS_NATIVE_APP") ? IS_NATIVE_APP : "";
-            if ($is_native_app !== $this->appName() || !$skip_app_log) {
+            if (!$dev_mode || ($dev_mode && !$skip_app_log) ) {
               try {
-                $GLOBALS["database"]->closeConnection();
-                $GLOBALS["database"] = new \TymFrontiers\MySQLDatabase(MYSQL_SERVER, MYSQL_DEVELOPER_USERNAME, MYSQL_DEVELOPER_PASS);
-                $log = new MultiForm(MYSQL_DEV_DB, 'request_history', 'id');
+                $log = new MultiForm($db_name, 'request_history', 'id', $this->_conn);
                 $log->app = $this->appName();
                 $log->path = "{$_SERVER['REQUEST_URI']} | {$_SERVER["HTTP_HOST"]}";
                 $post = \json_decode(\file_get_contents('php://input'), true);
@@ -57,10 +74,8 @@ class Authentication{
                   $log->param = \json_encode($re_param);
                 }
                 $log->create();
-                $GLOBALS["database"]->closeConnection();
-                $GLOBALS["database"] = new \TymFrontiers\MySQLDatabase(MYSQL_SERVER, MYSQL_GUEST_USERNAME, MYSQL_GUEST_PASS);
               } catch (\Exception $e) {
-
+                throw new \Exception("Failed to save Log: ".$e->getMessage(), 1);
               }
             }
 
@@ -74,7 +89,7 @@ class Authentication{
         $this->errors['self'][] = [0,256,"Invalid/Inactive: App/credential.",__FILE__,__LINE__];
       }
     }else{
-      $this->errors['self'][] = [0,256,"Missing Auth parameters encountered!",__FILE__,__LINE__];
+      $this->errors['self'][] = [0,256,"Missing Auth parameters: ".\implode(", ", $missn). ". Accepted Signature-Method: ".\implode(", ", ['sha256','sha512']),__FILE__,__LINE__];
     }
   }
 
