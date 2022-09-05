@@ -40,50 +40,55 @@ class Authentication{
     }
     if( empty($missn) && \in_array(\strtolower($header["Signature-Method"]), ['sha256','sha512'])) {
       $header['Signature-Method'] = \strtolower($header['Signature-Method']);
-      $db_name = \function_exists("\Catali\get_constant")
-        ? \Catali\get_constant("MYSQL_DEV_DB")
+      $db_name = \function_exists("\get_database")
+        ? \get_database("developer")
         : (\defined("MYSQL_DEV_DB") ? MYSQL_DEV_DB : "");
       if (empty($db_name)) throw new \Exception("Dev database: 'MYSQL_DEV_DB' not defined", 1);
       
       $dev_mode = \defined("API_ENV_DEVMODE") ? (bool)API_ENV_DEVMODE : false;
       $app = new DevApp($this->_conn, $db_name);
       $app->load($header['Auth-App'], $header['Auth-Key'], !(bool)$dev_mode);
-      if( !empty($app->name) ){
-        $hash_string = "{$app->prefix}&{$app->name}&{$app->privateKey()}&{$header['Signature-Method']}&{$header['Tymstamp']}";
-        $sign = \base64_decode($header['Auth-Signature']);
-        $hash = \hash($header['Signature-Method'],$hash_string);
-        // $set_expiry = \strtotime("+" . \ini_get("max_execution_time") . " Seconds");
-        $request_expiry = \strtotime("+" . \ini_get("max_execution_time") . " Seconds", (int)$header['Tymstamp']);
-        if ($overtime_seconds > 0 && $dev_mode) {
-          $request_expiry += $overtime_seconds;
-        }
-        if( $sign == $hash){
-          if( $request_expiry >= \time() ){
-            $this->_app = $app;
-            $this->_signature_method = $header['Signature-Method'];
-            // save log
-            if (!$dev_mode || ($dev_mode && !$skip_app_log) ) {
-              try {
-                $log = new MultiForm($db_name, 'request_history', 'id', $this->_conn);
-                $log->app = $this->appName();
-                $log->path = "{$_SERVER['REQUEST_URI']} | {$_SERVER["HTTP_HOST"]}";
-                $post = \json_decode(\file_get_contents('php://input'), true);
-                $post = $post ? $post : (!empty($_POST) ? ($_POST) : $_GET);
-                $re_param = $post;
-                if (!empty($re_param)) {
-                  $log->param = \json_encode($re_param);
-                }
-                $log->create();
-              } catch (\Exception $e) {
-                throw new \Exception("Failed to save Log: ".$e->getMessage(), 1);
-              }
-            }
 
-          }else{
-            $this->errors['self'][] = [0,256,"Request Authentication credential expired",__FILE__,__LINE__];
+      if( !empty($app->name) ){
+        if ($app->isSystem() && !$dev_mode) {
+          $this->errors['self'][] = [0,256,"System apps/users can only be used in development environment.",__FILE__,__LINE__];
+        } else {
+          $hash_string = "{$app->prefix}&{$app->name}&{$app->privateKey()}&{$header['Signature-Method']}&{$header['Tymstamp']}";
+          $sign = \base64_decode($header['Auth-Signature']);
+          $hash = \hash($header['Signature-Method'],$hash_string);
+          // $set_expiry = \strtotime("+" . \ini_get("max_execution_time") . " Seconds");
+          $request_expiry = \strtotime("+" . \ini_get("max_execution_time") . " Seconds", (int)$header['Tymstamp']);
+          if ($overtime_seconds > 0 && $dev_mode) {
+            $request_expiry += $overtime_seconds;
           }
-        }else{
-          $this->errors['self'][] = [0,256,"Request signature failed to authenticate.",__FILE__,__LINE__];
+          if( $sign == $hash){
+            if( $request_expiry >= \time() ){
+              $this->_app = $app;
+              $this->_signature_method = $header['Signature-Method'];
+              // save log
+              if (!$dev_mode || ($dev_mode && !$skip_app_log) ) {
+                try {
+                  $log = new MultiForm($db_name, 'request_history', 'id', $this->_conn);
+                  $log->app = $this->appName();
+                  $log->path = "{$_SERVER['REQUEST_URI']} | {$_SERVER["HTTP_HOST"]}";
+                  $post = \json_decode(\file_get_contents('php://input'), true);
+                  $post = $post ? $post : (!empty($_POST) ? ($_POST) : $_GET);
+                  $re_param = $post;
+                  if (!empty($re_param)) {
+                    $log->param = \json_encode($re_param);
+                  }
+                  $log->create();
+                } catch (\Exception $e) {
+                  throw new \Exception("Failed to save Log: ".$e->getMessage(), 1);
+                }
+              }
+  
+            } else {
+              $this->errors['self'][] = [0,256,"Request Authentication credential expired",__FILE__,__LINE__];
+            }
+          } else {
+            $this->errors['self'][] = [0,256,"Request signature failed to authenticate.",__FILE__,__LINE__];
+          }
         }
       }else{
         $this->errors['self'][] = [0,256,"Invalid/Inactive: App/credential.",__FILE__,__LINE__];
