@@ -51,7 +51,7 @@ class Authentication{
 
       if( !empty($app->name) ){
         if ($app->isSystem() && !$dev_mode) {
-          $this->errors['self'][] = [0,256,"System apps/users can only be used in development environment.",__FILE__,__LINE__];
+          $this->errors['self'][] = [0,256,"System apps/users can only be used in development environment.",__FILE__,__LINE__]; 
         } else {
           $hash_string = "{$app->prefix}&{$app->name}&{$app->privateKey()}&{$header['Signature-Method']}&{$header['Tymstamp']}";
           $sign = \base64_decode($header['Auth-Signature']);
