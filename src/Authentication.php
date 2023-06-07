@@ -40,9 +40,11 @@ class Authentication{
     }
     if( empty($missn) && \in_array(\strtolower($header["Signature-Method"]), ['sha256','sha512'])) {
       $header['Signature-Method'] = \strtolower($header['Signature-Method']);
-      $db_name = \function_exists("\get_database")
-        ? \get_database("developer")
-        : (\defined("MYSQL_DEV_DB") ? MYSQL_DEV_DB : "");
+      if (!$db_name = $this->_conn->getDatabase()) {
+        $db_name = \function_exists("\get_database")
+          ? \get_database("developer")
+          : (\defined("MYSQL_DEV_DB") ? MYSQL_DEV_DB : "");
+      }
       if (empty($db_name)) throw new \Exception("Dev database: 'MYSQL_DEV_DB' not defined", 1);
       
       $dev_mode = \defined("API_ENV_DEVMODE") ? (bool)API_ENV_DEVMODE : false;
