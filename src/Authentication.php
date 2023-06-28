@@ -12,7 +12,7 @@ class Authentication{
   private $_signature_method;
   public $errors = [];
 
-  function __construct(array $api_sign_patterns = [], string $custom_header_set='', int $overtime_seconds=0, bool $skip_app_log = false, $conn = false){
+  function __construct(array $api_sign_patterns = [], string $custom_header_set='', int $overtime_seconds=0, bool $skip_app_log = false, $conn = false, null|array $header_token = null){
     global $database;
     if ((!$conn || !$conn instanceof MySQLDatabase) && !$database instanceof MySQLDatabase) {
       throw new \Exception("No database connection set", 1);
@@ -25,7 +25,7 @@ class Authentication{
     ];
     $header = (!empty($custom_header_set) && \array_key_exists(\strtolower($custom_header_set),$custom_header_sets))
       ? $custom_header_sets[$custom_header_set]
-      : \apache_request_headers();
+      : ($header_token ? $header_token : \apache_request_headers());
     $missn = [];
     foreach ([
       'Auth-App',
